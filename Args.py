@@ -5,19 +5,19 @@ import os
 # manual input start
 dftdir   = '../OUT.autotest/'
 namddir  = '../namd_test/'
-dt       = 1      # MD time step fs
+dt       = 1      # MD time step (fs)
 start_t  = 1      # start MD_* dir
 end_t    = 2000   # end MD_* dir
 istart_t = 901    # isample start MD_* dir
-iend_t   = 1000   # isample start MD_* dir
+iend_t   = 1000   # isample end MD_* dir
 
 LCHARGE  = True   # output atom projected charge density
 atom     = [13,26]# atom number of all species
 orbital  = [27,13]# atomic orbital basis number
-whichA   = [0,13,14,15] # atom index (starts from 0)
+whichA   = [0,13,14,15] # atom index for projected charge density (starts from 0)
 
 LRANGE   = True   # select range of band, change iband
-LHOLE    = False   # Hole transfer
+LHOLE    = False   # Hole/electron transfer
 dE       = 2.0    # initial energy from VBM/CBM (eV)
 
 LPHASE   = True   # phase correction
@@ -26,11 +26,11 @@ TEMP     = 400    # temperature in Kelvin
 NACTIME  = 1000   # time for used NAC
 NAMDTIME = 1000   # time for NAMD run
 NELM     = 10     # electron time step (per fs)
-NTRAJ    = 5000   # SH trajectories
+NTRAJ    = 5000   # SH trajectories number
 
-LINTERP  = 2      # interpolation algorithm
-LTA      = True   # Liouville-Trotter algorithm
-LDISH    = True   # run DISH
+LINTERP  = 2      # hamiltonian interpolation algorithm 1,2,3
+LTA      = True   # Liouville-Trotter algorithm for small NELM
+LDISH    = True   # run DISH or FSSH
 # manual input end
 
 # constants
