@@ -11,6 +11,7 @@ def NACcalc():
             NACfunc.LoadDataNull,NACfunc.SaveE1,
             'all_en.npy','Energy and INICON',NACfunc.ReadE1
         )
+        Args.comm.Barrier()
         bandrange = open(Args.namddir+'bandrange.dat').readline().split()
         Args.iband_s = int(bandrange[0])
         Args.iband_e = int(bandrange[1])

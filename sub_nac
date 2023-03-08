@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --partition       hfacnormal03
+#SBATCH --partition       hfacnormal02
 #SBATCH -J tyy
 #SBATCH --time            100:00:00
 #SBATCH --nodes           2
-#SBATCH --ntasks-per-node 64
+#SBATCH --ntasks-per-node 128
 #SBATCH --cpus-per-task   1
 #SBATCH --error           nac.err
 #SBATCH --output          nac.log

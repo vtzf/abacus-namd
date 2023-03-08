@@ -42,8 +42,11 @@ Kb = Kb_eV*eV
 KbT = kbT = Kb_eV * TEMP
 
 # parameters check
-if not os.path.exists(namddir):
-    os.makedirs(namddir)
+comm = MPI.COMM_WORLD
+myid = comm.Get_rank()
+if myid == 0:
+    if not os.path.exists(namddir):
+        os.makedirs(namddir)
 
 # preprocess
 nsample = iend_t-istart_t+1
