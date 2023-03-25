@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 #-*- encoding:utf-8 -*-
 import Args
-import time
 import numpy as np
 from mpi4py import MPI
-import numba
 from numba import jit
 
 comm = MPI.COMM_WORLD
@@ -12,7 +10,7 @@ myid = comm.Get_rank()
 nprocs = comm.Get_size()
 
 # integration function
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def GetHamil(NAC,Energy,ibands,istep,estep):
     wht = estep/Args.NELM
     en = Energy[(istep+1)%Args.NACTIME]*wht + Energy[istep]*(1.0-wht)
@@ -21,7 +19,7 @@ def GetHamil(NAC,Energy,ibands,istep,estep):
     return en, nac
 
 
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def GetHamilDt(NAC,Energy,ibands,istep,estep):
     wht = estep/Args.NELM
     en = Energy[(istep+1)%Args.NACTIME]*wht + Energy[istep]*(1.0-wht)
@@ -33,7 +31,7 @@ def GetHamilDt(NAC,Energy,ibands,istep,estep):
     return en, nac
 
 
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def GetHamil2(NAC,Energy,ibands,istep,estep):
     wht = estep/Args.NELM/2
     en = Energy[istep]+(Energy[(istep+1)%(Args.NACTIME)]-Energy[istep-1])*wht
@@ -43,7 +41,7 @@ def GetHamil2(NAC,Energy,ibands,istep,estep):
 
 
 # Liouville-Trotter algorithm
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def LTA(en,nac,ibands,psi1):
     cos_nac = np.cos(-nac*(Args.edt/(4*Args.dt)))
     sin_nac = np.sin(-nac*(Args.edt/(4*Args.dt)))
@@ -63,7 +61,7 @@ def LTA(en,nac,ibands,psi1):
             psi1[j] = -sin_nac[i,j]*psi_i+cos_nac[i,j]*psi_j
 
 
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def TimeProp(NAC,Energy,psi0,psi1,psi2,ibands,istep,estep):
     if Args.LINTERP == 1:
         en, nac = GetHamil(NAC,Energy,ibands,istep%(Args.NACTIME),estep)
@@ -123,7 +121,7 @@ def TimeProp(NAC,Energy,psi0,psi1,psi2,ibands,istep,estep):
             psi1[:] = psi2
 
 
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def TimePropLTA(NAC,Energy,psi1,ibands,istep,estep):
     if Args.LINTERP == 1:
         en, nac = GetHamil(NAC,Energy,ibands,istep%(Args.NACTIME),estep)
@@ -141,7 +139,7 @@ def TimePropLTA(NAC,Energy,psi1,ibands,istep,estep):
 
 
 # DISH function
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def dishhop(
     ibands,DephaseR,Energy,psi1,decmoment,
     index,state,isrecomb,norecomb
@@ -174,14 +172,15 @@ def dishhop(
         if (prop0<=prop):
             psi1[:] = 0
             psi1[which] = 1
-            if Args.LHOLE:
-                if (which==ibands-1 and norecomb):
-                    isrecomb = True
-                    norecomb = False
-            else:
-                if (which==0 and norecomb):
-                    isrecomb = True
-                    norecomb = False
+            if Args.LRECOMB:
+                if Args.LHOLE:
+                    if (which==ibands-1 and norecomb):
+                        isrecomb = True
+                        norecomb = False
+                else:
+                    if (which==0 and norecomb):
+                        isrecomb = True
+                        norecomb = False
             state = which
         else:
             psi1[which] = 0
@@ -190,7 +189,7 @@ def dishhop(
     return state, isrecomb, norecomb
 
 
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def dish(
     ntraj,ibands,state_s,nac,
     energy,DephaseR,pop_sh_p,pop_rb_p
@@ -228,15 +227,17 @@ def dish(
                           psi2,decmoment,index,state,isrecomb,norecomb)
                 psi0[:] = psi1
                 psi1[:] = psi2
-            if (isrecomb and not norecomb):
-                pop_rb_p[j:Args.NAMDTIME] += 1
-                isrecomb = False
+            if Args.LRECOMB:
+                if (isrecomb and not norecomb):
+                    pop_rb_p[j:Args.NAMDTIME] += 1
+                    isrecomb = False
 
     pop_sh_p /= Args.NTRAJ
-    pop_rb_p /= Args.NTRAJ
+    if Args.LRECOMB:
+        pop_rb_p /= Args.NTRAJ
 
 
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def dish_e(e_sh,pop_sh,energy):
     for j in range(Args.NAMDTIME):
         pop_sh_t = (pop_sh[j]).astype('float64')
@@ -248,18 +249,21 @@ def MPIdish(
     DephaseR,pop_sh,pop_rb,e_sh
 ):
     pop_sh_p = np.zeros((Args.NAMDTIME,ibands),dtype=np.float32)
-    pop_rb_p = np.zeros((Args.NAMDTIME),dtype=np.float32)
-    
-    dish(ntraj,ibands,state_s,nac,energy,DephaseR,pop_sh_p,pop_rb_p)
+    if Args.LRECOMB:
+        pop_rb_p = np.zeros((Args.NAMDTIME),dtype=np.float32)
+        dish(ntraj,ibands,state_s,nac,energy,DephaseR,pop_sh_p,pop_rb_p)
+        comm.Reduce(pop_rb_p,pop_rb,op=MPI.SUM,root=0)
+    else:
+        pop_rb_p = np.zeros((0),dtype=np.float32)
+        dish(ntraj,ibands,state_s,nac,energy,DephaseR,pop_sh_p,pop_rb_p)
     comm.Reduce(pop_sh_p,pop_sh,op=MPI.SUM,root=0)
-    comm.Reduce(pop_rb_p,pop_rb,op=MPI.SUM,root=0)
     if myid == 0:
         dish_e(e_sh,pop_sh,energy)
 
 
 # FSSH functions
-@jit(nopython=True)
-def fsshhop(ibands,psi,NAC,Energy,state):
+@jit(nopython=True,fastmath=True,cache=False)
+def fsshhop(ibands,psi,NAC,Energy,state,isrecomb,norecomb):
     density = np.real(np.conj(psi[state])*psi)
     prop = (density*NAC[state])/density[state]
     prop = np.maximum(prop,0)
@@ -275,21 +279,33 @@ def fsshhop(ibands,psi,NAC,Energy,state):
     propall = np.zeros((ibands+1),dtype=float)
     propall[1:] = np.cumsum(prop)
 
-    if (prop0>propall[ibands]):
-        return state
-    idx_s = 0
-    idx_e = ibands
-    while True:
-        if ((idx_e-idx_s)<=1):
-            return idx_s
-        state = int((idx_s+idx_e)/2)
-        if (prop0<propall[state]):
-            idx_e = state
+    if (prop0<=propall[ibands]):
+        idx_s = 0
+        idx_e = ibands
+        while True:
+            if ((idx_e-idx_s)<=1):
+                state = idx_s
+                break
+            state = int((idx_s+idx_e)/2)
+            if (prop0<propall[state]):
+                idx_e = state
+            else:
+                idx_s = state
+
+    if Args.LRECOMB:
+        if Args.LHOLE:
+            if (state==ibands-1 and norecomb):
+                isrecomb = True
+                norecomb = False
         else:
-            idx_s = state
+            if (state==0 and norecomb):
+                isrecomb = True
+                norecomb = False
+
+    return state, isrecomb, norecomb
 
 
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def fssh_psi(ibands,state_s,psi_p,nac,energy):
     psi0 = np.zeros((ibands),dtype=np.complex128)
     psi1 = np.zeros((ibands),dtype=np.complex128)
@@ -306,25 +322,35 @@ def fssh_psi(ibands,state_s,psi_p,nac,energy):
                 TimeProp(nac,energy,psi0,psi1,psi2,ibands,j,k)
 
 
-@jit(nopython=True)
-def fssh_pop(ntraj,ibands,state_s,psi_p,pop_sh_p,nac,energy):
+@jit(nopython=True,fastmath=True,cache=False)
+def fssh_pop(ntraj,ibands,state_s,psi_p,pop_sh_p,pop_rb_p,nac,energy):
     for i in range(ntraj):
+        isrecomb = False
+        norecomb = True
         state = state_s
         for j in range(Args.NAMDTIME):
             pop_sh_p[j,state] += 1
-            state = fsshhop(ibands,psi_p[j],nac[j%(Args.NACTIME)],\
-                            energy[j%(Args.NACTIME)],state)
+            state,isrecomb,norecomb\
+            = fsshhop(ibands,psi_p[j],nac[j%(Args.NACTIME)],\
+                      energy[j%(Args.NACTIME)],state,isrecomb,norecomb)
+            if Args.LRECOMB:
+                if (isrecomb and not norecomb):
+                    pop_rb_p[j:Args.NAMDTIME] += 1
+                    isrecomb = False
+                
     pop_sh_p /= Args.NTRAJ
+    if Args.LRECOMB:
+        pop_rb_p /= Args.NTRAJ
 
 
-def fssh(ntraj,ibands,state_s,nac,energy,psi_p,pop_sh_p):
+def fssh(ntraj,ibands,state_s,nac,energy,psi_p,pop_sh_p,pop_rb_p):
     if myid == 0:
         fssh_psi(ibands,state_s,psi_p,nac,energy)
     comm.Bcast(psi_p,root=0)
-    fssh_pop(ntraj,ibands,state_s,psi_p,pop_sh_p,nac,energy)
+    fssh_pop(ntraj,ibands,state_s,psi_p,pop_sh_p,pop_rb_p,nac,energy)
 
 
-@jit(nopython=True)
+@jit(nopython=True,fastmath=True,cache=False)
 def fssh_e(psi_p,psi,pop_psi,pop_sh,e_psi,e_sh,energy):
     psi[:] = psi_p
     pop_psi[:] = np.real(np.conj(psi_p)*psi_p)
@@ -337,15 +363,106 @@ def fssh_e(psi_p,psi,pop_psi,pop_sh,e_psi,e_sh,energy):
 
 def MPIfssh(
     ibands,state_s,ntraj,nac,energy,
-    psi,pop_psi,e_psi,pop_sh,e_sh
+    psi,pop_psi,e_psi,pop_sh,pop_rb,e_sh
 ):
     psi_p = np.zeros((Args.NAMDTIME,ibands),dtype=complex)
-    pop_sh_p = np.zeros((Args.NAMDTIME,ibands),dtype=float)
-
-    fssh(ntraj,ibands,state_s,nac,energy,psi_p,pop_sh_p)
+    pop_sh_p = np.zeros((Args.NAMDTIME,ibands),dtype=np.float32)
+    if Args.LRECOMB:
+        pop_rb_p = np.zeros((Args.NAMDTIME),dtype=np.float32)
+        fssh(ntraj,ibands,state_s,nac,energy,psi_p,pop_sh_p,pop_rb_p)
+        comm.Reduce(pop_rb_p,pop_rb,op=MPI.SUM,root=0)
+    else:
+        pop_rb_p = np.zeros((0),dtype=np.float32)
+        fssh(ntraj,ibands,state_s,nac,energy,psi_p,pop_sh_p,pop_rb_p)
     comm.Reduce(pop_sh_p,pop_sh,op=MPI.SUM,root=0)
     if myid == 0:
         fssh_e(psi_p,psi,pop_psi,pop_sh,e_psi,e_sh,energy)
+
+
+# DCSH functions
+@jit(nopython=True,fastmath=True,cache=False)
+def dcsh_psi(psi1,DephaseR,state):
+    pop_t = np.ascontiguousarray(np.real(np.conj(psi1)*psi1))
+    decotime = 1/np.dot(DephaseR,pop_t)
+    psi1_t = psi1*np.exp(-Args.dt/decotime)
+    pop_t1 = 1-np.real(np.dot(np.conj(psi1_t),psi1_t) \
+              -np.conj(psi1_t[state])*psi1_t[state])
+    psi1_norm = psi1[state]*np.sqrt(pop_t1/pop_t[state])
+    psi1[:] = psi1_t
+    psi1[state] = psi1_norm
+
+
+@jit(nopython=True,fastmath=True,cache=False)
+def dcsh(
+    ntraj,ibands,state_s,nac,
+    energy,DephaseR,pop_sh_p,pop_rb_p
+):
+    psi0 = np.zeros((ibands),dtype=np.complex128)
+    psi1 = np.zeros((ibands),dtype=np.complex128)
+    psi2 = np.zeros((ibands),dtype=np.complex128)
+
+    for i in range(ntraj):
+        isrecomb = False
+        norecomb = True
+        psi0[:] = 0
+        psi1[:] = 0
+        psi2[:] = 0
+        state = state_s
+        psi0[state] = 1
+        psi1[state] = 1
+        for j in range(Args.NAMDTIME):
+            pop_sh_p[j,state] += 1
+            for k in range(Args.NELM):
+                if Args.LTA:
+                    TimePropLTA(nac,energy,psi1,ibands,j,k)
+                else:
+                    TimeProp(nac,energy,psi0,psi1,psi2,ibands,j,k)
+            if Args.LTA:
+                #dcsh_psi(psi1,DephaseR,state)
+                state,isrecomb,norecomb \
+                = fsshhop(ibands,psi1,nac[j%(Args.NACTIME)],\
+                          energy[j%(Args.NACTIME)],state,isrecomb,norecomb)
+                dcsh_psi(psi1,DephaseR,state)
+            else:
+                #dcsh_psi(psi2,DephaseR,state)
+                state, isrecomb, norecomb \
+                = fsshhop(ibands,psi2,nac[j%(Args.NACTIME)],\
+                          energy[j%(Args.NACTIME)],state,isrecomb,norecomb)
+                dcsh_psi(psi2,DephaseR,state)
+                psi0[:] = psi1
+                psi1[:] = psi2
+            if Args.LRECOMB:
+                if (isrecomb and not norecomb):
+                    pop_rb_p[j:Args.NAMDTIME] += 1
+                    isrecomb = False
+
+    pop_sh_p /= Args.NTRAJ
+    if Args.LRECOMB:
+        pop_rb_p /= Args.NTRAJ
+
+
+@jit(nopython=True,fastmath=True,cache=False)
+def dcsh_e(e_sh,pop_sh,energy):
+    for j in range(Args.NAMDTIME):
+        pop_sh_t = (pop_sh[j]).astype('float64')
+        e_sh[j] = np.dot(pop_sh_t,energy[j%Args.NACTIME])
+
+
+def MPIdcsh(
+    ibands,state_s,ntraj,nac,energy,
+    DephaseR,pop_sh,pop_rb,e_sh
+):
+    pop_sh_p = np.zeros((Args.NAMDTIME,ibands),dtype=np.float32)
+    if Args.LRECOMB:
+        pop_rb_p = np.zeros((Args.NAMDTIME),dtype=np.float32)
+        dcsh(ntraj,ibands,state_s,nac,energy,DephaseR,pop_sh_p,pop_rb_p)
+        comm.Reduce(pop_rb_p,pop_rb,op=MPI.SUM,root=0)
+    else:
+        pop_rb_p = np.zeros((0),dtype=np.float32)
+        dcsh(ntraj,ibands,state_s,nac,energy,DephaseR,pop_sh_p,pop_rb_p)
+    comm.Reduce(pop_sh_p,pop_sh,op=MPI.SUM,root=0)
+    if myid == 0:
+        dcsh_e(e_sh,pop_sh,energy)
 
 
 def SurfHop():
@@ -362,10 +479,11 @@ def SurfHop():
 
     #Args.nsample = 1
     if myid == 0:
-        if Args.LDISH:
+        if Args.LRECOMB:
+            pop_rb = np.zeros((Args.nsample,Args.NAMDTIME),dtype=np.float32)
+        if Args.LSH != 'FSSH':
             pop_sh = np.zeros((Args.nsample,Args.NAMDTIME,ibands),dtype=np.float32)
             e_sh = np.zeros((Args.nsample,Args.NAMDTIME),dtype=float)
-            pop_rb = np.zeros((Args.nsample,Args.NAMDTIME),dtype=np.float32)
         else:
             psi = np.zeros((Args.nsample,Args.NAMDTIME,ibands),dtype=complex)
             pop_psi = np.zeros((Args.nsample,Args.NAMDTIME,ibands),dtype=float)
@@ -374,59 +492,90 @@ def SurfHop():
             e_sh = np.zeros((Args.nsample,Args.NAMDTIME))
 
     for i in range(Args.nsample):
-        starttime = time.time()
+        starttime = MPI.Wtime()
         timeinit = inicon[i,0]-Args.start_t
         bandinit = inicon[i,1]
         state_s = bandinit-iband_s
-        if Args.LDISH:
+        if Args.LSH != 'FSSH':
             DephaseT = np.loadtxt(Args.namddir+'DEPHTIME')
             DephaseR = np.zeros((ibands,ibands))
             idx = np.where(DephaseT!=0)
             DephaseR[idx] = 1/DephaseT[idx]
             if myid == 0:
-                MPIdish(
-                    ibands,state_s,ntraj,
-                    nac[timeinit:timeinit+Args.NACTIME],
-                    energy[timeinit:timeinit+Args.NACTIME],
-                    DephaseR,pop_sh[i],pop_rb[i],e_sh[i]
-                )
+                if Args.LSH == 'DISH':
+                    MPIdish(
+                        ibands,state_s,ntraj,
+                        nac[timeinit:timeinit+Args.NACTIME],
+                        energy[timeinit:timeinit+Args.NACTIME],
+                        DephaseR,pop_sh[i],
+                        pop_rb[i] if Args.LRECOMB else None,
+                        e_sh[i]
+                    )
+                elif Args.LSH == 'DCSH':
+                    MPIdcsh(
+                        ibands,state_s,ntraj,
+                        nac[timeinit:timeinit+Args.NACTIME],
+                        energy[timeinit:timeinit+Args.NACTIME],
+                        DephaseR,pop_sh[i],
+                        pop_rb[i] if Args.LRECOMB else None,
+                        e_sh[i]
+                    )
             else:
-                MPIdish(
-                    ibands,state_s,ntraj,
-                    nac[timeinit:timeinit+Args.NACTIME],
-                    energy[timeinit:timeinit+Args.NACTIME],
-                    DephaseR,None,None,None
-                )
+                if Args.LSH == 'DISH':
+                    MPIdish(
+                        ibands,state_s,ntraj,
+                        nac[timeinit:timeinit+Args.NACTIME],
+                        energy[timeinit:timeinit+Args.NACTIME],
+                        DephaseR,None,None,None
+                    )
+                elif Args.LSH == 'DCSH':
+                    MPIdcsh(
+                        ibands,state_s,ntraj,
+                        nac[timeinit:timeinit+Args.NACTIME],
+                        energy[timeinit:timeinit+Args.NACTIME],
+                        DephaseR,None,None,None
+                    )
         else:
             if myid == 0:
                 MPIfssh(
                     ibands,state_s,ntraj,
                     nac[timeinit:timeinit+Args.NACTIME],
                     energy[timeinit:timeinit+Args.NACTIME],
-                    psi[i],pop_psi[i],e_psi[i],pop_sh[i],e_sh[i]
+                    psi[i],pop_psi[i],e_psi[i],pop_sh[i],
+                    pop_rb[i] if Args.LRECOMB else None,
+                    e_sh[i]
                 )
             else:
                  MPIfssh(
                     ibands,state_s,ntraj,
                     nac[timeinit:timeinit+Args.NACTIME],
                     energy[timeinit:timeinit+Args.NACTIME],
-                    None,None,None,None,None
+                    None,None,None,None,None,None
                 )
-        endtime = time.time()
+        endtime = MPI.Wtime()
         if myid == 0:
             print("%s time in sample %d: %.6fs"\
-                  %('DISH' if Args.LDISH else 'FSSH',i,endtime-starttime))
+                  %(Args.LSH,i,endtime-starttime))
 
     if myid == 0:
-        if Args.LDISH:
-            np.save(Args.namddir+'dish_pop_sh.npy',pop_sh)
-            np.save(Args.namddir+'dish_e_sh.npy',e_sh)
-            np.save(Args.namddir+'dish_pop_rb.npy',pop_rb)
+        if Args.LSH != 'FSSH':
+            if Args.LSH == 'DISH':
+                np.save(Args.namddir+'dish_pop_sh.npy',pop_sh)
+                np.save(Args.namddir+'dish_e_sh.npy',e_sh)
+                if Args.LRECOMB:
+                    np.save(Args.namddir+'dish_pop_rb.npy',pop_rb)
+            elif Args.LSH == 'DCSH':
+                np.save(Args.namddir+'dcsh_pop_sh.npy',pop_sh)
+                np.save(Args.namddir+'dcsh_e_sh.npy',e_sh)
+                if Args.LRECOMB:
+                    np.save(Args.namddir+'dcsh_pop_rb.npy',pop_rb)
         else:
             np.save(Args.namddir+'fssh_psi.npy',psi)
             np.save(Args.namddir+'fssh_pop_psi.npy',pop_psi)
             np.save(Args.namddir+'fssh_e_psi.npy',e_psi)
             np.save(Args.namddir+'fssh_pop_sh.npy',pop_sh)
             np.save(Args.namddir+'fssh_e_sh.npy',e_sh)
+            if Args.LRECOMB:
+                np.save(Args.namddir+'fssh_pop_rb.npy',pop_rb)
 
 SurfHop()

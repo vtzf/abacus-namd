@@ -1,10 +1,11 @@
 import numpy as np
 import os
+from mpi4py import MPI
 
 # NAMD parameter
 # manual input start
-dftdir   = '../OUT.autotest/'
-namddir  = '../namd_test/'
+dftdir   = '/public/share/zhaojin/tuyy/abacus/sh/OUT.autotest1/'
+namddir  = '../namd_test/' # output NAMD output file in namddir
 dt       = 1      # MD time step (fs)
 start_t  = 1      # start MD_* dir
 end_t    = 2000   # end MD_* dir
@@ -12,25 +13,29 @@ istart_t = 901    # isample start MD_* dir
 iend_t   = 1000   # isample end MD_* dir
 
 LCHARGE  = True   # output atom projected charge density
-atom     = [13,26]# atom number of all species
-orbital  = [27,13]# atomic orbital basis number
+atom     = [13,26]# atom number of all species (only needed in atomic basis)
+orbital  = [27,13]# atomic orbital basis number (only needed in atomic basis)
 whichA   = [0,13,14,15] # atom index for projected charge density (starts from 0)
 
 LRANGE   = True   # select range of band, change iband
-LHOLE    = False   # Hole/electron transfer
+                  # if not given, LRECOMB specifies energy range
+                  # if LRECOMB not given, energy range: [0,nbands]
+LHOLE    = True   # Hole/electron transfer
 dE       = 2.0    # initial energy from VBM/CBM (eV)
 
 LPHASE   = True   # phase correction
 
-TEMP     = 400    # temperature in Kelvin
-NACTIME  = 1000   # time for used NAC
+TEMP     = 300    # temperature in Kelvin
+NACTIME  = 1000   # time for used NAC (i_end_t-state_t+NACTIME<nstep)
 NAMDTIME = 1000   # time for NAMD run
-NELM     = 10     # electron time step (per fs)
+NELM     = 1000   # electron time step (per fs)
 NTRAJ    = 5000   # SH trajectories number
 
 LINTERP  = 2      # hamiltonian interpolation algorithm 1,2,3
-LTA      = True   # Liouville-Trotter algorithm for small NELM
-LDISH    = True   # run DISH or FSSH
+LTA      = False  # Liouville-Trotter algorithm for small NELM
+LSH      = 'FSSH' # run DISH, FSSH or DCSH
+
+LRECOMB  = False  # consider electron-hole recombination
 # manual input end
 
 # constants
@@ -51,7 +56,8 @@ if myid == 0:
 # preprocess
 nsample = iend_t-istart_t+1
 nstep = end_t-start_t+1
-nbands = int((open(dftdir+'MD_%d/LOWF_GAMMA_S1.dat'%(start_t)).readline()).split()[0])
+nbands = int((open(dftdir+'/LOWF_GAMMA_S1.dat').readline()).split()[0])
+norbital = int((open(dftdir+'/data-0-S').readline()).split()[0])
 band_s = 1
 band_e = nbands
 iband_s = 1
