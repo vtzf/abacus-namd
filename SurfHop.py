@@ -197,7 +197,7 @@ def dish(
     psi0 = np.zeros((ibands),dtype=np.complex128)
     psi1 = np.zeros((ibands),dtype=np.complex128)
     psi2 = np.zeros((ibands),dtype=np.complex128)
-    decmoment = np.zeros((ibands),dtype=float)
+    decmoment = np.zeros((ibands),dtype=np.float64)
     index = np.arange(ibands)
 
     for i in range(ntraj):
@@ -240,7 +240,7 @@ def dish(
 @jit(nopython=True,fastmath=True,cache=False)
 def dish_e(e_sh,pop_sh,energy):
     for j in range(Args.NAMDTIME):
-        pop_sh_t = (pop_sh[j]).astype('float64')
+        pop_sh_t = (pop_sh[j]).astype(np.float64)
         e_sh[j] = np.dot(pop_sh_t,energy[j%Args.NACTIME])
 
 
@@ -276,7 +276,7 @@ def fsshhop(ibands,psi,NAC,Energy,state,isrecomb,norecomb):
     
     prop0 = np.random.rand()
 
-    propall = np.zeros((ibands+1),dtype=float)
+    propall = np.zeros((ibands+1),dtype=np.float64)
     propall[1:] = np.cumsum(prop)
 
     if (prop0<=propall[ibands]):
@@ -357,7 +357,7 @@ def fssh_e(psi_p,psi,pop_psi,pop_sh,e_psi,e_sh,energy):
     for j in range(Args.NAMDTIME):
         e = energy[j%Args.NACTIME]
         e_psi[j] = np.dot(pop_psi[j],e)
-        pop_sh_t = (pop_sh[j]).astype('float64')
+        pop_sh_t = (pop_sh[j]).astype(np.float64)
         e_sh[j] = np.dot(pop_sh_t,e)
 
 
@@ -365,7 +365,7 @@ def MPIfssh(
     ibands,state_s,ntraj,nac,energy,
     psi,pop_psi,e_psi,pop_sh,pop_rb,e_sh
 ):
-    psi_p = np.zeros((Args.NAMDTIME,ibands),dtype=complex)
+    psi_p = np.zeros((Args.NAMDTIME,ibands),dtype=np.complex128)
     pop_sh_p = np.zeros((Args.NAMDTIME,ibands),dtype=np.float32)
     if Args.LRECOMB:
         pop_rb_p = np.zeros((Args.NAMDTIME),dtype=np.float32)
@@ -444,7 +444,7 @@ def dcsh(
 @jit(nopython=True,fastmath=True,cache=False)
 def dcsh_e(e_sh,pop_sh,energy):
     for j in range(Args.NAMDTIME):
-        pop_sh_t = (pop_sh[j]).astype('float64')
+        pop_sh_t = (pop_sh[j]).astype(np.float64)
         e_sh[j] = np.dot(pop_sh_t,energy[j%Args.NACTIME])
 
 
@@ -483,10 +483,10 @@ def SurfHop():
             pop_rb = np.zeros((Args.nsample,Args.NAMDTIME),dtype=np.float32)
         if Args.LSH != 'FSSH':
             pop_sh = np.zeros((Args.nsample,Args.NAMDTIME,ibands),dtype=np.float32)
-            e_sh = np.zeros((Args.nsample,Args.NAMDTIME),dtype=float)
+            e_sh = np.zeros((Args.nsample,Args.NAMDTIME),dtype=np.float64)
         else:
-            psi = np.zeros((Args.nsample,Args.NAMDTIME,ibands),dtype=complex)
-            pop_psi = np.zeros((Args.nsample,Args.NAMDTIME,ibands),dtype=float)
+            psi = np.zeros((Args.nsample,Args.NAMDTIME,ibands),dtype=np.complex128)
+            pop_psi = np.zeros((Args.nsample,Args.NAMDTIME,ibands),dtype=np.float64)
             e_psi = np.zeros((Args.nsample,Args.NAMDTIME))
             pop_sh = np.zeros((Args.nsample,Args.NAMDTIME,ibands),dtype=np.float32)
             e_sh = np.zeros((Args.nsample,Args.NAMDTIME))
@@ -556,26 +556,46 @@ def SurfHop():
         if myid == 0:
             print("%s time in sample %d: %.6fs"\
                   %(Args.LSH,i,endtime-starttime))
+            if Args.OutMode == 'numpy':
+                if Args.LSH != 'FSSH':
+                    if Args.LSH == 'DISH':
+                        np.save(Args.namddir+'dish_pop_sh.npy',pop_sh)
+                        np.save(Args.namddir+'dish_e_sh.npy',e_sh)
+                        if Args.LRECOMB:
+                            np.save(Args.namddir+'dish_pop_rb.npy',pop_rb)
+                    elif Args.LSH == 'DCSH':
+                        np.save(Args.namddir+'dcsh_pop_sh.npy',pop_sh)
+                        np.save(Args.namddir+'dcsh_e_sh.npy',e_sh)
+                        if Args.LRECOMB:
+                            np.save(Args.namddir+'dcsh_pop_rb.npy',pop_rb)
+                else:
+                    np.save(Args.namddir+'fssh_psi.npy',psi)
+                    np.save(Args.namddir+'fssh_pop_psi.npy',pop_psi)
+                    np.save(Args.namddir+'fssh_e_psi.npy',e_psi)
+                    np.save(Args.namddir+'fssh_pop_sh.npy',pop_sh)
+                    np.save(Args.namddir+'fssh_e_sh.npy',e_sh)
+                    if Args.LRECOMB:
+                        np.save(Args.namddir+'fssh_pop_rb.npy',pop_rb)
+        
+            elif Args.OutMode == 'text':
+                for i in range(Args.nsample):
+                    with open(Args.namddir+'/SHPROP.%d'%(inicon[i,0]),'w') as f:
+                        for j in range(Args.NAMDTIME):
+                            f.write('%4d %13.8f'%(j+1,e_sh[i,j]))
+                            for k in range(ibands):
+                                f.write('%10.6f'%(pop_sh[i,j,k]))
+                            f.write('\n')
+                    if Args.LRECOMB:
+                        with open(Args.namddir+'/RECOMB.%d'%(inicon[i,0]),'w') as f:
+                            for j in range(Args.NAMDTIME):
+                                f.write('%4d %10.6f\n'%(j+1,pop_rb[i,j]))
+                    if Args.LSH != 'FSSH':
+                        with open(Args.namddir+'/PSICT.%d'%(inicon[i,0]),'w') as f:
+                            for j in range(Args.NAMDTIME):
+                                f.write('%4d %13.8f'%(j+1,e_psi[i,j]))
+                                for k in range(ibands):
+                                    f.write('%10.6f'%(pop_psi[i,j,k]))
+                                f.write('\n')
 
-    if myid == 0:
-        if Args.LSH != 'FSSH':
-            if Args.LSH == 'DISH':
-                np.save(Args.namddir+'dish_pop_sh.npy',pop_sh)
-                np.save(Args.namddir+'dish_e_sh.npy',e_sh)
-                if Args.LRECOMB:
-                    np.save(Args.namddir+'dish_pop_rb.npy',pop_rb)
-            elif Args.LSH == 'DCSH':
-                np.save(Args.namddir+'dcsh_pop_sh.npy',pop_sh)
-                np.save(Args.namddir+'dcsh_e_sh.npy',e_sh)
-                if Args.LRECOMB:
-                    np.save(Args.namddir+'dcsh_pop_rb.npy',pop_rb)
-        else:
-            np.save(Args.namddir+'fssh_psi.npy',psi)
-            np.save(Args.namddir+'fssh_pop_psi.npy',pop_psi)
-            np.save(Args.namddir+'fssh_e_psi.npy',e_psi)
-            np.save(Args.namddir+'fssh_pop_sh.npy',pop_sh)
-            np.save(Args.namddir+'fssh_e_sh.npy',e_sh)
-            if Args.LRECOMB:
-                np.save(Args.namddir+'fssh_pop_rb.npy',pop_rb)
 
 SurfHop()

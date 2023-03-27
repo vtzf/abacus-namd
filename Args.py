@@ -36,6 +36,8 @@ LTA      = False  # Liouville-Trotter algorithm for small NELM
 LSH      = 'FSSH' # run DISH, FSSH or DCSH
 
 LRECOMB  = False  # consider electron-hole recombination
+
+OutMode  = 'text' # output file format 'numpy(.npy)' or 'text'
 # manual input end
 
 # constants
