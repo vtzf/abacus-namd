@@ -589,12 +589,12 @@ def SurfHop():
                         with open(Args.namddir+'/RECOMB.%d'%(inicon[i,0]),'w') as f:
                             for j in range(Args.NAMDTIME):
                                 f.write('%4d %10.6f\n'%(j+1,pop_rb[i,j]))
-                    if Args.LSH != 'FSSH':
+                    if Args.LSH == 'FSSH':
                         with open(Args.namddir+'/PSICT.%d'%(inicon[i,0]),'w') as f:
                             for j in range(Args.NAMDTIME):
                                 f.write('%4d %13.8f'%(j+1,e_psi[i,j]))
                                 for k in range(ibands):
-                                    f.write('%10.6f'%(pop_psi[i,j,k]))
+                                    f.write('  (%.16f,%.16f)'%(pop_psi[i,j,k].real,pop_psi[i,j,k].imag))
                                 f.write('\n')
 
 
