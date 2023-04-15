@@ -1,0 +1,58 @@
+INPUT_PARAMETERS
+#Parameters	(General)
+suffix          autotest
+pseudo_dir	/public/home/tuyy/opt/abacus-develop-surface_hopping/tests/PP_ORB
+orbital_dir	/public/home/tuyy/opt/abacus-develop-surface_hopping/tests/PP_ORB
+ntype		2
+nbands		300
+calculation     md
+
+#Parameters (Accuracy)
+ecutwfc		36.765
+scf_nmax	100
+
+basis_type	lcao
+
+cal_stress	1
+scf_thr         7.353e-7
+stress_thr      1e-2
+cal_force       1
+force_thr_ev    1.0e-2
+
+smearing_method gaussian
+smearing_sigma  0.0037
+
+ks_solver       genelpa
+mixing_type     pulay
+mixing_beta     0.2
+mixing_ndim	10
+
+#DFT+U
+#dft_plus_u	1
+#orbital_corr	2 -1
+#hubbard_u	4.1 0
+#hund_j	0 0
+
+#VDW
+#vdw_method	d2
+#vdw_s6	0.75
+#vdw_d	20
+#vdw_cutoff_type	radius
+#vdw_cutoff_radius	50
+#vdw_radius_unit	A
+
+symmetry                0
+md_dt           1
+md_nstep        500
+md_type          0
+#md_thermostat    NVE
+md_restart       0
+md_tfirst        300
+init_vel         1
+
+read_file_dir   ./
+
+gamma_only       1
+
+out_wfc_lcao     1
+out_mat_hs       1

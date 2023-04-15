@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --partition       hfacnormal02
+#SBATCH -J tyy
+#SBATCH --time            100:00:00
+#SBATCH --nodes           2
+#SBATCH --ntasks-per-node 128
+#SBATCH --cpus-per-task   1
+#SBATCH --error           nac.err
+#SBATCH --output          nac.log
+
+ulimit -s unlimited
+
+#export OMP_NUM_THREADS=1
+
+echo "============================================================"
+module list
+env | grep "MKLROOT="
+echo "============================================================"
+echo "Job ID: $SLURM_JOB_NAME"
+echo "Job name: $SLURM_JOB_NAME"
+echo "Number of nodes: $SLURM_JOB_NUM_NODES"
+echo "Number of processors: $SLURM_NTASKS"
+echo "Task is running on the following nodes:"
+echo $SLURM_JOB_NODELIST
+echo "OMP_NUM_THREADS = $SLURM_CPUS_PER_TASK"
+echo "============================================================"
+echo
+
+srun --mpi=pmi2 python NAC.py
