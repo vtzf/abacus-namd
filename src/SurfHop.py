@@ -468,7 +468,7 @@ def MPIdcsh(
 
 
 def SurfHop():
-    inicon = np.loadtxt(Args.namddir+'INICON',dtype=int)
+    inicon = np.loadtxt(Args.namddir+'INICON',dtype=int).reshape(Args.nsample,2)
     bandrange = np.loadtxt(Args.namddir+'bandrange.dat',dtype=int)
     iband_s = bandrange[0]
     iband_e = bandrange[1]

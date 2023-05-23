@@ -32,9 +32,9 @@ def ReadE(idx,data):
             return np.concatenate((energy,[1],[band_vbm]))
     else:
         if Args.LRECOMB:
-            return np.concatenate((energy,[nband],[band_vbm]))
+            return np.concatenate((energy,[Args.nbands],[band_vbm]))
         else:
-            return np.concatenate((energy,[nband],[band_vbm+1]))
+            return np.concatenate((energy,[Args.nbands],[band_vbm+1]))
 
 
 def gaussian(x,c):
@@ -96,9 +96,9 @@ def ReadE1(idx,data):
         else:
             return np.concatenate((energy,[band_init],[band_vbm]))
     else:
-        band_init = nband
+        band_init = Args.nbands
         idx_s = band_vbm
-        idx_e = nband
+        idx_e = Args.nbands
         while True:
             if ((idx_e-idx_s)<=1):
                 band_init = idx_e

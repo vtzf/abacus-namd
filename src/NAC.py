@@ -33,7 +33,7 @@ def NACcalc():
         )
     else:
         MPIfunc.MPIfuncE(
-            Args.nstep,[Args.nbands],'float64',NACfunc.SaveE,
+            Args.nstep,[Args.nbands+2],'float64',NACfunc.SaveE,
             'all_en.npy','Energy',NACfunc.ReadE,e_occ_p,nidx,idx_range
         )
     bandrange = open(Args.namddir+'bandrange.dat').readline().split()
