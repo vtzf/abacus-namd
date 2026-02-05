@@ -43,9 +43,8 @@ mixing_ndim	10
 
 symmetry                0
 md_dt           1
-md_nstep        500
-md_type          0
-#md_thermostat    NVE
+md_nstep        100
+md_type          nve
 md_restart       0
 md_tfirst        300
 init_vel         1
@@ -54,5 +53,7 @@ read_file_dir   ./
 
 gamma_only       1
 
+
 out_wfc_lcao     1
 out_mat_hs       1
+cal_syns         1
