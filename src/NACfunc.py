@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.sparse import csr_matrix
 from scipy.integrate import cumtrapz
 from scipy.signal import correlate
 from scipy.optimize import curve_fit
@@ -137,13 +138,26 @@ def SaveE(savename,energy):
 
 
 # elgenvector/value, overlap read/write
-def LoadDataOrbital(step,Type,myid,nidx,idx_range):
+def LoadDataOrbital(Type,myid,nprocs,nidx,idx_range):
     nline = Args.norbital//5 if Args.norbital%5==0 else Args.norbital//5+1
-    orbital = np.zeros((nidx[myid],Args.nbands,Args.norbital),dtype=Type)
-    e_occ = np.zeros((nidx[myid],2,Args.nbands),dtype=Type)
+    orbital = np.zeros((nidx[myid]+2,Args.nbands,Args.norbital),dtype=Type)
+    e_occ = np.zeros((nidx[myid]+2,2,Args.nbands),dtype=Type)
 
-    LEN = (Args.start_t+idx_range[myid])*((nline+3)*Args.nbands+2)
-    f = open(Args.dftdir+'/LOWF_GAMMA_S1.dat','rb')
+    if nprocs > 1:
+        if myid == 0:
+            LEN = (Args.start_t-1+idx_range[myid])*((nline+3)*Args.nbands+2)
+            ndata = nidx[myid]+1
+        elif myid == nprocs-1:
+            LEN = (Args.start_t-1+idx_range[myid]-1)*((nline+3)*Args.nbands+2)
+            ndata = nidx[myid]+1
+        else:
+            LEN = (Args.start_t-1+idx_range[myid]-1)*((nline+3)*Args.nbands+2)
+            ndata = nidx[myid]+2
+    else:
+        LEN = (Args.start_t-1+idx_range[myid])*((nline+3)*Args.nbands+2)
+        ndata = nidx[myid]
+
+    f = open(Args.dftdir+'wf_nao.txt','rb')
     offset = 0
     line = 0
     while True:
@@ -156,11 +170,11 @@ def LoadDataOrbital(step,Type,myid,nidx,idx_range):
             offset += 1
     f.close()
 
-    with open(Args.dftdir+'/LOWF_GAMMA_S1.dat','r') as f:
+    with open(Args.dftdir+'wf_nao.txt','r') as f:
         f.seek(offset*0x400000,0)
         for i in range(LEN-line):
             next(f)
-        for i in range(nidx[myid]):
+        for i in range(ndata):
             for ii in range(2):
                 next(f)
             for j in range(Args.nbands):
@@ -178,15 +192,28 @@ def LoadDataOrbital(step,Type,myid,nidx,idx_range):
     return e_occ, vec
 
 
-def LoadDataOlp(step,Type,myid,nidx,idx_range):
+def LoadDataOlp(Type,myid,nprocs,nidx,idx_range,LSYNS):
     N = Args.norbital
-    olp = np.zeros((nidx[myid],N,N),dtype=Type)
+    olp = np.zeros((nidx[myid]+2,N,N),dtype=Type)
+    olps = np.zeros((nidx[myid]+1,N,N),dtype=Type)
     olp_t = np.zeros((N,N),dtype=Type)
-    idx = np.zeros((N,),dtype=int)
-    idx[0] = 1
 
-    LEN = (Args.start_t+idx_range[myid])*N
-    f = open(Args.dftdir+'/data-0-S','rb')
+    nline = np.ceil(np.arange(1,N+1)/8).astype(int).sum()
+    if nprocs > 1:
+        if myid == 0:
+            LEN = (Args.start_t-1+idx_range[myid])*(nline+N+7)
+            ndata = nidx[myid]+1
+        elif myid == nprocs-1:
+            LEN = (Args.start_t-1+idx_range[myid]-1)*(nline+N+7)
+            ndata = nidx[myid]+1
+        else:
+            LEN = (Args.start_t-1+idx_range[myid]-1)*(nline+N+7)
+            ndata = nidx[myid]+2
+    else:
+        LEN = (Args.start_t-1+idx_range[myid])*(nline+N+7)
+        ndata = nidx[myid]
+
+    f = open(Args.dftdir+'sk_nao.txt','rb')
     offset = 0
     line = 0
     while True:
@@ -199,23 +226,89 @@ def LoadDataOlp(step,Type,myid,nidx,idx_range):
             offset += 1
     f.close()
 
-    with open(Args.dftdir+'/data-0-S','r') as f:
+    with open(Args.dftdir+'sk_nao.txt','r') as f:
         f.seek(offset*0x400000,0)
         for i in range(LEN-line):
             next(f)
-        for i in range(nidx[myid]):
+        for i in range(ndata):
+            for ii in range(7):
+                next(f)
             for j in range(N):
-                olp_t[j,j:] = np.array(\
-                              (f.readline().split())[idx[j]:],dtype=Type)
+                next(f)
+                irow = N-j
+                iloop = irow//8
+                for k in range(iloop):
+                    olp_t[j,j+k*8:j+(k+1)*8] \
+                    = np.array(f.readline().split(),dtype=Type)
+                if irow % 8 > 0:
+                    olp_t[j,j+iloop*8:] \
+                    = np.array(f.readline().split(),dtype=Type)
                 olp_t[j,j] /= 2
 
             olp[i] = olp_t + olp_t.copy().T
 
-    return olp
+    if LSYNS:
+        olps_t = np.zeros((N*N),dtype=Type)
+        csr_t = np.zeros((N+1),dtype=np.int32)
+        csr_col = np.zeros((N*N),dtype=np.int32)
+        csr_row = np.zeros((N*N),dtype=np.int32)
+        if myid == 0:
+            LEN = (Args.start_t-1+idx_range[myid])*7
+            ndata = nidx[myid]
+        elif myid == nprocs-1:
+            LEN = (Args.start_t-1+idx_range[myid]-1)*7
+            ndata = nidx[myid]
+        else:
+            LEN = (Args.start_t-1+idx_range[myid]-1)*7
+            ndata = nidx[myid]+1
+
+        f = open(Args.dftdir+'syns_nao.csr','rb')
+        offset = 0
+        line = 0
+        while True:
+            data = f.read(0x400000)
+            iline = data.count(b'\n')
+            if line+iline>=LEN:
+                break
+            else:
+                line += iline
+                offset += 1
+        f.close()
+
+        with open(Args.dftdir+'syns_nao.csr','r') as f:
+            f.seek(offset*0x400000,0)
+            for i in range(LEN-line):
+                next(f)
+            for i in range(ndata):
+                for ii in range(3):
+                    next(f)
+                nsparse = int(f.readline().split()[3])
+                olps_t[0:nsparse] \
+                = np.array(f.readline().split(),dtype=Type)
+                csr_col[0:nsparse] \
+                = np.array(f.readline().split(),dtype=np.int32)
+                csr_t[:] \
+                = np.array(f.readline().split(),dtype=np.int32)
+                for ii in range(N):
+                    idx_min = csr_t[ii]
+                    idx_max = csr_t[ii+1]
+                    csr_row[idx_min:idx_max] = ii
+                csr_mat \
+                = csr_matrix(
+                    (olps_t[0:nsparse],
+                    (csr_row[0:nsparse],csr_col[0:nsparse])),
+                    shape = (N,N)
+                )
+                olps[i] = csr_mat.toarray()
+    else:
+        for i in range(ndata-1):
+            olps[i] = (olp[i]+olp[i+1])/2
+
+    return olp, olps
 
 
 # charge density read/write, save all_wht.npy
-def CDInfo(myid,idx,data,vec,olp):
+def CDInfo(myid,idx,data,vec,olp,olps):
     All = vec[idx]*np.dot(olp[idx],vec[idx])
     CAll = np.sum(All,axis=0)
     CPart = np.sum(All[Args.whichO],axis=0)
@@ -228,8 +321,7 @@ def SaveCD(savename,data):
 
 
 # phase correction, save phase_m.npy
-def Phase(vec1,vec2,olp1,olp2):
-    olp12 = (olp1+olp2)/2
+def Phase(vec1,vec2,olp12):
     phase = np.zeros((Args.ibands))
     vec_olp = np.dot(vec1.T,olp12)
     for i in range(Args.ibands):
@@ -238,17 +330,22 @@ def Phase(vec1,vec2,olp1,olp2):
     return np.sign(phase).astype('int32')
 
 
-def PhaseInfo(myid,idx,data,vec,olp):
-    if myid == 0 and idx == 0:
-        vec1 = vec[idx+1]
-        olp1 = olp[idx+1]
-        phase = Phase(vec1,vec1,olp1,olp1)
+def PhaseInfo(myid,idx,data,vec,olp,olps):
+    if myid == 0:
+        if idx == 0:
+            vec1 = vec[idx]
+            olp1 = olp[idx]
+            phase = Phase(vec1,vec1,olp1)
+        else:
+            vec1 = vec[idx-1]
+            vec2 = vec[idx]
+            olp12 = olps[idx-1]
+            phase = Phase(vec1,vec2,olp12)
     else:
         vec1 = vec[idx]
         vec2 = vec[idx+1]
-        olp1 = olp[idx]
-        olp2 = olp[idx+1]
-        phase = Phase(vec1,vec2,olp1,olp2)
+        olp12 = olps[idx]
+        phase = Phase(vec1,vec2,olp12)
 
     return phase
 
@@ -275,38 +372,34 @@ def LoadDataPhase(step,nsend,Type):
     return np.load(Args.namddir+'/phase_m.npy')
 
 
-def NAC(vec1,vec2,olp1,olp2):
-    olp12 = (olp1+olp2)/2
+def NAC(vec1,vec2,olp12):
     nac = np.dot(np.dot(vec1.T,olp12),vec2)\
-          -np.dot(np.dot(vec2.T,olp12),vec1)
+          -np.dot(np.dot(vec2.T,olp12.T),vec1)
 
     return nac
 
 
-def NACInfo(myid,idx,data,vec,olp):
+def NACInfo(myid,idx,data,vec,olp,olps):
     vec1 = vec[idx]
     vec2 = vec[idx+1]
-    olp1 = olp[idx]
-    olp2 = olp[idx+1]
-    nac = NAC(vec1,vec2,olp1,olp2)
+    olp12 = olps[idx]
+    nac = NAC(vec1,vec2,olp12)
     return nac
 
 
-def NACPhase(vec1,vec2,olp1,olp2,phase):
-    olp12 = (olp1+olp2)/2
+def NACPhase(vec1,vec2,olp12,phase):
     nac = (np.dot(np.dot(vec1.T,olp12),vec2))*phase\
-          -(np.dot(np.dot(vec2.T,olp12),vec1))*phase.T
+          -(np.dot(np.dot(vec2.T,olp12.T),vec1))*phase.T
 
     return nac
 
 
-def NACPhaseInfo(myid,idx,phase,vec,olp):
+def NACPhaseInfo(myid,idx,phase,vec,olp,olps):
     vec1 = vec[idx]
     vec2 = vec[idx+1]
-    olp1 = olp[idx]
-    olp2 = olp[idx+1]
+    olp12 = olps[idx]
     phase0 = phase[idx]
-    nac = NACPhase(vec1,vec2,olp1,olp2,phase0)
+    nac = NACPhase(vec1,vec2,olp12,phase0)
     return nac
 
 

@@ -4,13 +4,13 @@ from mpi4py import MPI
 
 # NAMD parameter
 # manual input start
-dftdir   = '/public/share/zhaojin/tuyy/abacus/sh/OUT.autotest1/'
-namddir  = '../namd_test/' # output NAMD output file in namddir
+dftdir   = '/public/home/tuyy/task/dataset/abacus/TiO2/abacus_test/OUT.autotest-syns'
+namddir  = 'namd_test' # output NAMD output file in namddir
 dt       = 1      # MD time step (fs)
 start_t  = 1      # start MD step
-end_t    = 2000   # end MD step
-istart_t = 901    # isample start MD step
-iend_t   = 1000   # isample end MD step
+end_t    = 100   # end MD step
+istart_t = 1    # isample start MD step
+iend_t   = 10   # isample end MD step
 
 LCHARGE  = True   # output atom projected charge density
 atom     = [13,26]# atom number of all species (only needed in atomic basis)
@@ -26,8 +26,8 @@ dE       = 2.0    # initial energy from VBM/CBM (eV)
 LPHASE   = True   # phase correction
 
 TEMP     = 300    # temperature in Kelvin
-NACTIME  = 1000   # time for used NAC (i_end_t-state_t+NACTIME<nstep)
-NAMDTIME = 1000   # time for NAMD run
+NACTIME  = 90   # time for used NAC (i_end_t-state_t+NACTIME<nstep)
+NAMDTIME = 90   # time for NAMD run
 NELM     = 1000   # electron time step (per fs)
 NTRAJ    = 5000   # SH trajectories number
 
@@ -49,6 +49,8 @@ Kb = Kb_eV*eV
 KbT = kbT = Kb_eV * TEMP
 
 # parameters check
+dftdir = dftdir+'/'
+namddir = namddir+'/'
 comm = MPI.COMM_WORLD
 myid = comm.Get_rank()
 if myid == 0:
@@ -56,10 +58,18 @@ if myid == 0:
         os.makedirs(namddir)
 
 # preprocess
+if os.path.exists(dftdir+'syns_nao.csr'):
+    LSYNS = True
+else:
+    LSYNS = False
 nsample = iend_t-istart_t+1
 nstep = end_t-start_t+1
-nbands = int((open(dftdir+'/LOWF_GAMMA_S1.dat').readline()).split()[0])
-norbital = int((open(dftdir+'/data-0-S').readline()).split()[0])
+
+fp = open(dftdir+'wf_nao.txt','r')
+nbands = int(fp.readline().split()[0])
+norbital = int(fp.readline().split()[0])
+fp.close()
+
 band_s = 1
 band_e = nbands
 iband_s = 1
