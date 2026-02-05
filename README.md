@@ -4,15 +4,16 @@
 
 ## Running AIMD
 
-First, the ABACUS input files are needed to perform AIMD NVT and NVE calculation. To output the overlap matrix `data-0-S` and wavefunction file `LOWF_GAMMA_S1.dat` in ouput directory, the extra parameter should be added in `INPUT`file. The parameter `gamma_only` should be set to`1` to only get $\Gamma$-point outputs because current version of Hefei-NAMD interface only supports $\Gamma$-point NAC. A set of input files can be obtained in `example` directory.
+First, the ABACUS input files are needed to perform AIMD NVT and NVE calculation. To output the overlap matrix `sk_nao.txt` and wavefunction file `wf_nao.txt` in ouput directory, the extra parameter should be added in `INPUT`file. The parameter `gamma_only` should be set to`1` to only get $\Gamma$-point outputs because current version of Hefei-NAMD interface only supports $\Gamma$-point NAC. A set of input files can be obtained in `example` directory.
 
 ```
 gamma_only       1
 out_wfc_lcao     1
 out_mat_hs       1
+cal_syns         1
 ```
 
-After AIMD calculation, the output directory `OUT.YourSystemName` will contain 3 files: `data-0-H`, `data-0-S` and `LOWF_GAMMA_S1.dat`, which represent Hamiltonian, overlap and wavefunction respectively.
+After AIMD calculation, the output directory `OUT.YourSystemName` will contain 3 files: `hk_nao.txt`, `sk_nao.txt` and `wf_nao.txt`, which represent Hamiltonian, overlap and wavefunction respectively. If the parameter `cal_syns` is set to `1`, the file `syns_nao.csr` containing two-center overlap integrals will be output for Kohn-Sham overlap calculation. Otherwise, a concentric approximation will be used to get Kohn-Sham overlaps.
 
 ## Get Input Parameters
 
@@ -28,13 +29,13 @@ Before perform preprocessing and NAMD simulations, some parameters need to be sp
 ```python
 # NAMD parameter
 # manual input start
-dftdir   = '/public/share/zhaojin/tuyy/abacus/sh/OUT.autotest1/'
-namddir  = '../namd_test/' # output NAMD output file in namddir
+dftdir   = '/public/home/tuyy/task/dataset/abacus/TiO2/abacus_test/OUT.autotest-syns'
+namddir  = 'namd_test' # output NAMD output file in namddir
 dt       = 1      # MD time step (fs)
 start_t  = 1      # start MD step
-end_t    = 2000   # end MD step
-istart_t = 901    # isample start MD step
-iend_t   = 1000   # isample end MD step
+end_t    = 100    # end MD step
+istart_t = 1      # isample start MD step
+iend_t   = 10     # isample end MD step
 
 LCHARGE  = True   # output atom projected charge density
 atom     = [13,26]# atom number of all species (only needed in atomic basis)
@@ -50,8 +51,8 @@ dE       = 2.0    # initial energy from VBM/CBM (eV)
 LPHASE   = True   # phase correction
 
 TEMP     = 300    # temperature in Kelvin
-NACTIME  = 1000   # time for used NAC (i_end_t-state_t+NACTIME<nstep)
-NAMDTIME = 1000   # time for NAMD run
+NACTIME  = 90     # time for used NAC (i_end_t-start_t+NACTIME<nstep)
+NAMDTIME = 1000     # time for NAMD run
 NELM     = 1000   # electron time step (per fs)
 NTRAJ    = 5000   # SH trajectories number
 
@@ -77,8 +78,8 @@ For comparation, the Hefei-NAMD `inp` file is also listed here.
   POTIM    = 1.0      ! MD time step
   TEMP     = 300    ! temperature in Kelvin
 
-  NSAMPLE  = 100    ! number of samples
-  NAMDTIME = 1000   ! time for NAMD run
+  NSAMPLE  = 10     ! number of samples
+  NAMDTIME = 1000     ! time for NAMD run
   NELM     = 1000   ! electron time step
   NTRAJ    = 5000   ! SH trajectories
   LHOLE    = .TRUE. ! hole/electron SH
@@ -97,7 +98,7 @@ For comparation, the Hefei-NAMD `inp` file is also listed here.
 * **LRANGE**: select energy range of band, the reference band is VBM for **LHOLE=True** and CBM for **LHOLE=False**. When considering electron-hole recombination, CBM=VBM+1 and VBM=CBM-1 respectly.
 * **LHOLE**: same as `LHOLE` in `inp`.
 * **LPHASE**: whether to perform phase correction on NAC or not.
-* **NACTIME**: time step for NAC used in NAMD simulations (i_end_t-state_t+NACTIME<nstep)
+* **NACTIME**: time step for NAC used in NAMD simulations (i_end_t-start_t+NACTIME<nstep)
 * **NAMDTIME**: time for NAMD run. If NAMDTIME>NACTIME, the NACs are looped for simulations.
 * **LINTERP**: hamiltonian interpolation algorithm in time-dependent wave function evolution. For 1, same as interpolation algorithm in original FSSH program. For 2, same as interpolation algorithm in original DISH program. For 3, interpolation algorithm from [J. Chem. Theory Comput. 2014, 10, 2, 789-804](https://pubs.acs.org/doi/10.1021/ct400934c).
 * **LTA**: whether to use Liouville-Trotter algorithm for small NELM simulations or not. Liouville-Trotter algorithm from [J. Chem. Theory Comput. 2014, 10, 2, 789-804](https://pubs.acs.org/doi/10.1021/ct400934c).
